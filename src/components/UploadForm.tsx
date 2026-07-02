@@ -24,9 +24,10 @@ interface UploadFormProps {
     }
   ) => Promise<void>;
   uploaderEmail: string;
+  isOffline?: boolean;
 }
 
-export default function UploadForm({ onUpload, uploaderEmail }: UploadFormProps) {
+export default function UploadForm({ onUpload, uploaderEmail, isOffline = false }: UploadFormProps) {
   // Form values
   const [nomorArsip, setNomorArsip] = useState('');
   const [judul, setJudul] = useState('');
@@ -163,12 +164,14 @@ export default function UploadForm({ onUpload, uploaderEmail }: UploadFormProps)
         <div>
           <h2 className="text-lg font-sans font-bold text-slate-900">Unggah & Arsipkan Dokumen</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            File akan diunggah ke Google Drive dan log data disimpan di Google Sheets.
+            {isOffline 
+              ? 'Arsip akan disimpan sementara secara offline lokal pada memori peramban Anda.' 
+              : 'File akan diunggah ke Google Drive dan log data disimpan di Google Sheets.'}
           </p>
         </div>
         <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-500 font-medium">
-          <Database className="w-4 h-4 text-indigo-500" />
-          <span>Sheet Database Terkoneksi</span>
+          <Database className={`w-4 h-4 ${isOffline ? 'text-amber-500' : 'text-indigo-500'}`} />
+          <span>{isOffline ? 'Mode Offline Lokal' : 'Sheet Database Terkoneksi'}</span>
         </div>
       </div>
 

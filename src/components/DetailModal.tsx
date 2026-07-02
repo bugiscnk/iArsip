@@ -33,9 +33,9 @@ export default function DetailModal({ item, isOpen, onClose }: DetailModalProps)
   };
 
   // Safe Google Drive Preview Embedded Link
-  const drivePreviewUrl = item.fileDriveId 
+  const drivePreviewUrl = item.fileDriveId && !item.fileDriveId.startsWith('offline-local-file-')
     ? `https://drive.google.com/file/d/${item.fileDriveId}/preview`
-    : '';
+    : (item.fileDriveLink && item.fileDriveLink.startsWith('blob:') ? item.fileDriveLink : '');
 
   return (
     <div id="detail-modal-backdrop" className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">

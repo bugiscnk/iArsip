@@ -55,6 +55,48 @@ export const defaultUser: OperatorUser = {
   createdAt: new Date().toISOString()
 };
 
+const INITIAL_OFFLINE_ARCHIVES: ArchiveItem[] = [
+  {
+    id: 'ID-SMPL01',
+    nomorArsip: '001/ARS/SM/VI/2026',
+    judul: 'Surat Undangan Rapat Koordinasi Wilayah',
+    kategori: 'Surat Masuk',
+    deskripsi: 'Undangan koordinasi program kerja semester dua tahun anggaran 2026.',
+    tanggalArsip: '2026-06-15',
+    fileDriveId: 'sample-file-1',
+    fileDriveLink: '#',
+    fileDriveName: 'Undangan_Rakor_Wilayah_2026.pdf',
+    pengunggah: 'bugisgptgc@gmail.com',
+    tanggalUnggah: '15/06/2026, 09:00 WITA',
+  },
+  {
+    id: 'ID-SMPL02',
+    nomorArsip: '012/ARS/SK/V/2026',
+    judul: 'Surat Keputusan Pengangkatan Panitia Arsip Mandiri',
+    kategori: 'Surat Keputusan (SK)',
+    deskripsi: 'SK struktur kepanitiaan pelaksana digitalisasi arsip sekretariat daerah.',
+    tanggalArsip: '2026-05-20',
+    fileDriveId: 'sample-file-2',
+    fileDriveLink: '#',
+    fileDriveName: 'SK_Panitia_Arsip_Digital.pdf',
+    pengunggah: 'bugisgptgc@gmail.com',
+    tanggalUnggah: '20/05/2026, 14:30 WITA',
+  },
+  {
+    id: 'ID-SMPL03',
+    nomorArsip: '045/ARS/KEU/IV/2026',
+    judul: 'Laporan Realisasi Anggaran Triwulan I',
+    kategori: 'Dokumen Keuangan',
+    deskripsi: 'Laporan neraca keuangan dan realisasi pengeluaran operasional sekretariat triwulan pertama.',
+    tanggalArsip: '2026-04-10',
+    fileDriveId: 'sample-file-3',
+    fileDriveLink: '#',
+    fileDriveName: 'Laporan_Keuangan_Triwulan_I_2026.xlsx',
+    pengunggah: 'bugisgptgc@gmail.com',
+    tanggalUnggah: '10/04/2026, 11:15 WITA',
+  }
+];
+
 export default function App() {
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
 
@@ -139,7 +181,19 @@ export default function App() {
       setAccessToken(token);
       loadArchives(token);
     } else {
-      triggerToast('info', 'Hubungkan Google Workspace untuk mengakses data Sheets & Drive.');
+      // Load offline archives if not connected
+      const offlineData = localStorage.getItem('user_archives_offline');
+      if (offlineData) {
+        try {
+          setArchives(JSON.parse(offlineData));
+        } catch (err) {
+          setArchives(INITIAL_OFFLINE_ARCHIVES);
+        }
+      } else {
+        setArchives(INITIAL_OFFLINE_ARCHIVES);
+        localStorage.setItem('user_archives_offline', JSON.stringify(INITIAL_OFFLINE_ARCHIVES));
+      }
+      triggerToast('info', 'Sesi kearsipan aktif dalam Mode Offline Lokal.');
     }
   }, []);
 
@@ -223,8 +277,38 @@ export default function App() {
       tanggalArsip: string;
     }
   ) => {
+    // 2. Build the unique record
+    const id = 'ID-' + Math.random().toString(36).substr(2, 9).toUpperCase();
+    const timestamp = new Date().toLocaleString('id-ID', { timeZoneName: 'short' });
+
+    let simulatedLink = '#';
+    try {
+      simulatedLink = URL.createObjectURL(file);
+    } catch (e) {
+      console.warn('Gagal membuat object URL untuk berkas lokal');
+    }
+
+    const newItem: ArchiveItem = {
+      id,
+      nomorArsip: metadata.nomorArsip,
+      judul: metadata.judul,
+      kategori: metadata.kategori,
+      deskripsi: metadata.deskripsi,
+      tanggalArsip: metadata.tanggalArsip,
+      fileDriveId: 'offline-local-file-' + id,
+      fileDriveLink: simulatedLink,
+      fileDriveName: file.name,
+      pengunggah: user?.email || 'bugisgptgc@gmail.com',
+      tanggalUnggah: timestamp,
+    };
+
     if (!accessToken) {
-      triggerToast('error', 'Google Drive belum terhubung. Silakan hubungkan Google Workspace terlebih dahulu.');
+      // Offline mode saving
+      const updatedArchives = [newItem, ...archives];
+      setArchives(updatedArchives);
+      localStorage.setItem('user_archives_offline', JSON.stringify(updatedArchives));
+      setActiveTab('all');
+      triggerToast('success', 'Arsip berhasil disimpan secara offline lokal di browser.');
       return;
     }
 
@@ -232,23 +316,9 @@ export default function App() {
       // 1. Upload the physical document file to Drive
       const uploadResult = await uploadFileToDrive(accessToken, file);
 
-      // 2. Build the unique record
-      const id = 'ID-' + Math.random().toString(36).substr(2, 9).toUpperCase();
-      const timestamp = new Date().toLocaleString('id-ID', { timeZoneName: 'short' });
-
-      const newItem: ArchiveItem = {
-        id,
-        nomorArsip: metadata.nomorArsip,
-        judul: metadata.judul,
-        kategori: metadata.kategori,
-        deskripsi: metadata.deskripsi,
-        tanggalArsip: metadata.tanggalArsip,
-        fileDriveId: uploadResult.fileId,
-        fileDriveLink: uploadResult.fileLink,
-        fileDriveName: file.name,
-        pengunggah: user?.email || 'bugisgptgc@gmail.com',
-        tanggalUnggah: timestamp,
-      };
+      // Overwrite with real Google Drive details
+      newItem.fileDriveId = uploadResult.fileId;
+      newItem.fileDriveLink = uploadResult.fileLink;
 
       // 3. Save entry row to Google Spreadsheet
       await createArchiveEntry(accessToken, newItem);
@@ -265,7 +335,14 @@ export default function App() {
 
   // Handler: Save modifications to sheets
   const handleSaveEdit = async (updatedItem: ArchiveItem) => {
-    if (!accessToken) return;
+    if (!accessToken) {
+      // Offline mode editing
+      const updatedArchives = archives.map(item => item.id === updatedItem.id ? updatedItem : item);
+      setArchives(updatedArchives);
+      localStorage.setItem('user_archives_offline', JSON.stringify(updatedArchives));
+      triggerToast('success', 'Data arsip berhasil diperbarui secara lokal.');
+      return;
+    }
     try {
       await updateArchiveEntry(accessToken, updatedItem);
       // Reactive state modification
@@ -280,14 +357,12 @@ export default function App() {
 
   // Handler: Delete record and file with strict confirm
   const handleDeleteArchive = async (itemId: string, fileDriveId: string) => {
-    if (!accessToken) return;
-
     const findItem = archives.find(item => item.id === itemId);
     const itemTitle = findItem ? `'${findItem.judul}'` : 'arsip ini';
 
     showConfirm({
       title: 'Hapus Arsip Digital?',
-      message: `Apakah Anda yakin ingin menghapus arsip ${itemTitle}? Tindakan ini akan menghapus rekaman di Google Sheets secara permanen & memindahkan berkas di Google Drive ke tempat sampah.`,
+      message: `Apakah Anda yakin ingin menghapus arsip ${itemTitle}? Tindakan ini akan menghapus rekaman secara permanen.` + (!accessToken ? '' : ' & memindahkan berkas di Google Drive ke tempat sampah.'),
       confirmText: 'Ya, Hapus Permanen',
       cancelText: 'Batal',
       type: 'danger',
@@ -295,11 +370,20 @@ export default function App() {
         setConfirmConfig(prev => ({ ...prev, isOpen: false }));
         setIsLoadingData(true);
         try {
+          if (!accessToken) {
+            // Offline mode deletion
+            const updatedArchives = archives.filter(item => item.id !== itemId);
+            setArchives(updatedArchives);
+            localStorage.setItem('user_archives_offline', JSON.stringify(updatedArchives));
+            triggerToast('success', 'Arsip berhasil dihapus secara lokal.');
+            return;
+          }
+
           // 1. Delete Sheets Entry Row
           await deleteArchiveEntry(accessToken, itemId);
 
           // 2. Trash Drive File (send to trash/bin)
-          if (fileDriveId) {
+          if (fileDriveId && !fileDriveId.startsWith('offline-local-file-')) {
             await deleteFileFromDrive(accessToken, fileDriveId);
           }
 
@@ -602,13 +686,30 @@ export default function App() {
                   </div>
                 </div>
 
-                {isIframe && (
+                {isIframe ? (
                   <div className="bg-amber-100/50 border border-amber-200/50 p-4 rounded-xl text-xs text-amber-850 space-y-1">
                     <p className="font-bold flex items-center gap-1 text-amber-900">
                       ℹ️ Penjelasan Mengapa Terkunci:
                     </p>
                     <p className="opacity-90 leading-relaxed text-amber-800">
                       Sistem tampilan halaman sandboxed virtual seperti AI Studio atau iframe melarang pemuatan popup otentikasi Google secara langsung. <strong>Solusi resmi & termudah:</strong> klik tombol <strong>"Buka di Tab Baru"</strong> di atas. Setelah terbuka penuh di tab mandiri peramban Anda, hubungkan akun Google Drive & Sheets Anda dengan sekali klik. Sistem akan mengingat sesi Anda!
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-amber-100/45 border border-amber-200/50 p-4 rounded-xl text-xs text-amber-900/90 space-y-2">
+                    <p className="font-bold flex items-center gap-1.5 text-amber-950">
+                      💡 Panduan Mengatasi Gagal Koneksi di GitHub Pages & Vercel:
+                    </p>
+                    <p className="leading-relaxed text-amber-800">
+                      Otentikasi pop-up Google OAuth (Firebase Auth) membutuhkan otorisasi origin domain. Jika Anda melihat pesan error atau tombol tidak merespons setelah rilis di GitHub atau Vercel:
+                    </p>
+                    <ul className="list-decimal pl-4 space-y-1 text-amber-800 font-medium">
+                      <li>Masuk ke <strong>Firebase Console</strong> Anda &rarr; Pilih Proyek &rarr; Masuk ke menu <strong>Authentication</strong> &rarr; pilih tab <strong>Settings</strong> &rarr; pilih <strong>Authorized domains</strong>.</li>
+                      <li>Tambahkan domain situs rilis Anda, contohnya: <code>username.github.io</code> atau <code>nama-aplikasi.vercel.app</code> ke dalam daftar domain tepercaya tersebut.</li>
+                      <li>Daftarkan juga domain tersebut sebagai <em>Authorized JavaScript origins</em> di <strong>Google Cloud Console &rarr; APIs & Services &rarr; Credentials &rarr; OAuth 2.0 Client IDs</strong> milik Anda agar API token Google dapat diterbitkan dengan aman.</li>
+                    </ul>
+                    <p className="text-[11px] text-amber-700/80 italic pt-1 border-t border-amber-200/30">
+                      * Catatan: Selama Google Workspace belum terhubung, dasbor ini tetap fungsional dalam <strong>Mode Offline Lokal</strong>. Data arsip yang Anda unggah, sunting, atau hapus akan otomatis disimpan di penyimpanan lokal browser Anda!
                     </p>
                   </div>
                 )}
@@ -668,6 +769,7 @@ export default function App() {
                   <UploadForm 
                     onUpload={handleUploadNewArchive}
                     uploaderEmail={user?.email || 'bugisgptgc@gmail.com'}
+                    isOffline={!accessToken}
                   />
                 )}
                 {activeTab === 'operators' && (
