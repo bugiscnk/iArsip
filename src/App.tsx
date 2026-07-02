@@ -46,12 +46,21 @@ import {
   ExternalLink
 } from 'lucide-react';
 
+export const defaultUser: OperatorUser = {
+  id: 'default-operator',
+  name: 'Operator Utama',
+  email: 'bugisgptgc@gmail.com',
+  role: 'admin',
+  passwordHash: '',
+  createdAt: new Date().toISOString()
+};
+
 export default function App() {
   const isIframe = typeof window !== 'undefined' && window.self !== window.top;
 
   // Authentication status
-  const [needsAuth, setNeedsAuth] = useState(true);
-  const [user, setUser] = useState<OperatorUser | null>(null);
+  const [needsAuth, setNeedsAuth] = useState(false);
+  const [user, setUser] = useState<OperatorUser | null>(defaultUser);
   const [accessToken, setAccessToken] = useState<string | null>(null);
 
   // Application data
@@ -112,25 +121,25 @@ export default function App() {
 
   // Initialize and check operator custom session + Google tokens
   useEffect(() => {
+    let currentUser = defaultUser;
     const savedUser = localStorage.getItem('operator_user_session');
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser) as OperatorUser;
-        setUser(parsed);
-        setNeedsAuth(false);
-        const token = restoreGoogleToken();
-        if (token) {
-          setAccessToken(token);
-          loadArchives(token);
-        } else {
-          // Allow session but prompt to authorize Google Drive
-          triggerToast('info', 'Sesi aktif. Hubungkan Google Workspace untuk mengakses data Sheets & Drive.');
-        }
+        currentUser = parsed;
       } catch (e) {
-        setNeedsAuth(true);
+        console.warn('Gagal membaca sesi operator tersimpan, menggunakan default.');
       }
+    }
+    setUser(currentUser);
+    setNeedsAuth(false);
+
+    const token = restoreGoogleToken();
+    if (token) {
+      setAccessToken(token);
+      loadArchives(token);
     } else {
-      setNeedsAuth(true);
+      triggerToast('info', 'Hubungkan Google Workspace untuk mengakses data Sheets & Drive.');
     }
   }, []);
 
@@ -185,20 +194,20 @@ export default function App() {
 
   const handleLogout = async () => {
     showConfirm({
-      title: 'Keluar dari Sesi?',
-      message: 'Apakah Anda yakin ingin keluar dari sesi Dashboard Arsip Digital?',
-      confirmText: 'Ya, Keluar',
+      title: 'Putuskan Google Workspace?',
+      message: 'Apakah Anda yakin ingin memutuskan koneksi Google Drive & Sheets serta membersihkan data lokal? Anda tidak perlu masuk log kembali untuk menggunakan dasbor ini.',
+      confirmText: 'Ya, Putuskan Koneksi',
       cancelText: 'Batal',
-      type: 'info',
+      type: 'warning',
       onConfirm: () => {
         setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-        setUser(null);
-        setNeedsAuth(true);
+        setUser(defaultUser);
+        setNeedsAuth(false);
         localStorage.removeItem('operator_user_session');
         clearGoogleToken();
         setAccessToken(null);
         setArchives([]);
-        triggerToast('info', 'Sesi operator telah ditutup.');
+        triggerToast('info', 'Koneksi Google Workspace berhasil diputuskan.');
       }
     });
   };
