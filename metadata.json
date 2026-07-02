@@ -1,0 +1,6 @@
+{
+  "name": "Arsip Digital",
+  "description": "Aplikasi dashboard arsip digital yang terintegrasi dengan Google Drive dan Google Sheets.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
